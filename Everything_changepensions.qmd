@@ -57,6 +57,19 @@ alea_theme <- function() {
 
 theme_set(alea_theme())
 
+# Custom billion format
+label_billions <- function(digits = 1) {
+  function(x) {
+    number_format(accuracy = 10^-digits, suffix = "B")(
+      x / 1e9
+    )
+  }
+}
+
+scale_y_billions <- function(..., digits = 1) {
+  scale_y_continuous(labels = label_billions(digits), ...)
+}
+
 move_to_last <- function(df, n) df[c(setdiff(seq_len(nrow(df)), n), n), ]
 
 
@@ -153,7 +166,14 @@ Aviation fuel refund fund, fund 0946
 cannabis Excise Tax Refund, fund 0912
 Rental Purchase agreement Refund 0671
 
-> Check tax_refund_long in general. What is actually excluded automaticlly from gap calculation?
+
+
+
+What we want:   
+- To exclude refunds as expenditures from our expenditure totals.  
+- Exclude funds that hold refund funds from both revenue and expenditure sides  
+- Revenue neutral unless budget tricks are occurring  
+- still want to examine refunds over time to compare to past years calculations  
 
 
 ```{r}
@@ -177,7 +197,7 @@ tax_refund_long <- exp_temp %>%           # fund != "0401" # removes State Trust
     fund=="0378" & object=="9925" ~ "24", # insurance privilege tax refund
    (fund=="0001" & object=="9925") | (object=="9925" & fund == "0384" & fy == 2023) ~ "35", # all other taxes
    # fund=="0001" & object=="9925" ~ "35", # all other taxes
-       fund=="0946" ~ "35", # cannabis, aviation
+       fund %in% c("0946", "0912", "0671")  ~ "35", # cannabis, aviation, rental purchase tax refund
     T ~ "CHECK"))                       # if none of the items above apply to the observations, then code them as CHECK 
 
     
@@ -186,57 +206,48 @@ exp_temp <- left_join(exp_temp, tax_refund_long) %>%
 
 tax_refund <- tax_refund_long %>% 
   group_by(refund, fy)%>%
-  summarize(refund_amount = sum(expenditure, na.rm = TRUE)/1000000) %>%
+  summarize(refund_amount = sum(expenditure, na.rm = TRUE)) %>%
   pivot_wider(names_from = refund, values_from = refund_amount, names_prefix = "ref_") %>%
   mutate_all(~replace_na(.,0)) %>%
   arrange(fy)
-# 
+
 tax_refund %>%
   pivot_longer(c(ref_06:ref_35, ref_FY23_Rebates), names_to = "Refund Type", values_to = "Amount") %>%
+  ungroup() |>
   ggplot()+
-  theme_classic()+
-  geom_line(aes(x=fy,y=Amount, group = `Refund Type`, color = `Refund Type`))+
+  geom_line(aes(x=fy, y=Amount, group = `Refund Type`, color = `Refund Type`))+
+    scale_y_billions() +
   labs(title = "Refund Types") +
   labs(title = "Tax refunds",
        caption = "Rev_type codes: 02=income taxes, 03=corporate income taxes, 06=sales tax, 09=motor fuel tax,
-       24=insurance taxes and fees, 35 = all other tax refunds." )
+       24=insurance taxes and fees, 35 = all other tax refunds.",
+       y="Dollars", x = element_blank()
+       ) 
 
 ```
 
-
 ```{r}
-#| label: fig-tax-refunds-oldgraph
-#| fig-cap:  Tax Refunds
-#| column: margin 
+#| label: fig-tax-refunds-noabatement
+#| fig-cap:  Tax Refunds without FY23 Abatements
 
-# What we want: To exclude refunds as expenditures from our expenditure totals.
-# Exclude funds that hold refund funds from both revenue and expenditure sides
-# Revenue neutral unless budget tricks are occurring
-# still want to examine refunds over time to compare to past years calculations
-
-
-tax_refund_long <- exp_temp %>%  
-  
-  # filter out only refund objects
-    # keeps these objects which represent revenue, insurance, treasurer,and financial and professional reg tax refunds
-  filter(fund != "0401" & # fund != "0401" # removes State Trust Funds
+tax_refund_long <- exp_temp %>%           # fund != "0401" # removes State Trust Funds
+  filter(fund != "0401" &
            (object == "9900" | object=="9910"|object=="9921"|object=="9923"|object=="9925")) %>%
-  
-  # add revenue category numbers
+  # keeps these objects which represent revenue, insurance, treasurer,and financial and professional reg tax refunds
   mutate(refund = case_when(
-    object == "9900" ~ "FY23_Rebates",      # part of COVID relief
+    object == "9900" & fund == "0278" ~ "FY23_Rebates",
     fund=="0278" & sequence == "00" ~ "02", # for income tax refund
     fund=="0278" & sequence == "01" ~ "03", # tax administration and enforcement and tax operations become corporate income tax refund
-    fund == "0278" & sequence == "02" ~ "02",
+        fund=="0380" ~ "03", # corporate franv tax refund
+
+     fund == "0278" & sequence == "02" ~ "02",
     object=="9921" ~ "21",                # inheritance tax and estate tax refund appropriation
     object=="9923" ~ "09",                # motor fuel tax refunds
     obj_seq_type == "99250055" ~ "06",    # sales tax refund
     fund=="0378" & object=="9925" ~ "24", # insurance privilege tax refund
-    (fund=="0001" & object=="9925") | 
-      (object=="9925" & fund >= "0384" & 
-         fy == 2023) ~ "35",               # all other taxes
-    fund=="0946" ~ "35", # cannabis, aviation
-
+   (fund=="0001" & object=="9925") | (object=="9925" & fund == "0384" & fy == 2023) ~ "35", # all other taxes
+   # fund=="0001" & object=="9925" ~ "35", # all other taxes
+       fund %in% c("0946", "0912", "0671")  ~ "35", # cannabis, aviation, rental purchase tax refund
     T ~ "CHECK"))                       # if none of the items above apply to the observations, then code them as CHECK 
 
     
@@ -245,26 +256,74 @@ exp_temp <- left_join(exp_temp, tax_refund_long) %>%
 
 tax_refund <- tax_refund_long %>% 
   group_by(refund, fy)%>%
-  summarize(refund_amount = sum(expenditure, na.rm = TRUE)/1000000) %>%
+  summarize(refund_amount = sum(expenditure, na.rm = TRUE)) %>%
   pivot_wider(names_from = refund, values_from = refund_amount, names_prefix = "ref_") %>%
   mutate_all(~replace_na(.,0)) %>%
   arrange(fy)
-
+ 
 tax_refund %>%
-  pivot_longer(c(ref_02:ref_35, ref_FY23_Rebates), names_to = "Refund Type", values_to = "Amount") %>%
+  pivot_longer(c(ref_06:ref_35), names_to = "Refund Type", values_to = "Amount") %>%
   ggplot()+
-  scale_x_continuous(expand = c(0,0), limits = c(1998, current_year+.5), breaks = c(1998, 2005, 2010, 2015, 2020, current_year)) +
-    geom_line(aes(x=fy,y=Amount, group = `Refund Type`, color = `Refund Type`))+
-  labs(title = "Refund Types",
-       caption = "INcORREcT: Refunds are excluded from Expenditure totals and instead subtracted from Revenue totals") +
-  labs(title = "Tax refunds",
-       caption = "Rev_type codes: 02=income taxes, 
-       03=corporate income taxes, 06=sales tax, 09=motor fuel tax,
-       24=insurance taxes and fees, 35 = all other tax refunds." )
+  theme_classic()+
+  geom_line(aes(x=fy,y=Amount, group = `Refund Type`, color = `Refund Type`))+
+  labs(title = "Refund Types") +
+  labs(title = "Tax refunds without FY23 Abatements",
+       caption = "Rev_type codes: 02=income taxes, 03=corporate income taxes, 06=sales tax, 09=motor fuel tax,
+       24=insurance taxes and fees, 35 = all other tax refunds.",
+       ) +
+  scale_y_billions()
 
-# remove the items we recoded in tax_refund_long
-# exp_temp <- exp_temp %>% filter(refund == "not refund")
+```
 
+> Check tax_refund_long in general. What is actually excluded automaticlly from gap calculation?
+
+```{r}
+#| label: fig-includedrefunds
+#| fig-cap: "Based on current fund coding in the fund_ab_in.xlsx file, most refund dollars are already being excluded by having `in_ff` = 0. Funds that have `in_ff` = 0 are excluded from revenue and expenditure sums when calculating the Fiscal Gap."
+#| 
+
+tax_refund_long |> 
+  summarize(expenditure = sum(expenditure, na.rm=TRUE), .by = c(fy, in_ff) ) |>
+  ggplot() + 
+  geom_line(aes(x=fy, y = expenditure, group = factor(in_ff), color = factor(in_ff)))+
+  labs(title = "Excluded Refund Expenditures", y = "Dollars", x = element_blank())
+```
+
+
+```{r}
+#| label: fig-tax-refunds-revenueside
+#| fig-cap:  Tax Refunds from Revenues. Includes only funds designated as Refund funds in fund descriptions.
+
+tax_refund_long_rev <- rev_temp %>%          
+  mutate(refund = case_when(
+    fund == "0121" ~ "35", # Estate tax refund
+    fund=="0278" ~ "02", # for income tax refunds (individual and corporate)
+    fund=="0380" ~ "03", # corporate franchise tax refund
+    fund=="0378" ~ "24", # insurance privilege tax refund
+    fund %in% c("0946", "0912", "0671")  ~ "35", # cannabis, aviation, rental purchase tax refund
+    T ~ "CHECK")) |>                      # if none of the items above apply to the observations, then code them as CHECK 
+  filter(refund != "CHECK")
+
+    
+
+
+tax_refund_rev <- tax_refund_long_rev %>% 
+  group_by(refund, fy)%>%
+  summarize(allocated_for_refunds = sum(receipts, na.rm = TRUE)/1000000) %>%
+  pivot_wider(names_from = refund, values_from = allocated_for_refunds, names_prefix = "ref_") %>%
+  mutate_all(~replace_na(.,0)) %>%
+  arrange(fy)
+# 
+tax_refund_rev%>%
+  pivot_longer(c(ref_02:ref_35), names_to = "Refund Type", values_to = "Amount") %>%
+  ggplot()+
+  geom_line(aes(x=fy,y=Amount, group = `Refund Type`, color = `Refund Type`))+
+  labs(title = "Refund Types") +
+  labs(title = "Revenue Allocated to Tax Refund Funds ",
+       caption = "Rev_type codes: 02=income taxes, 03=corporate income taxes, 06=sales tax, 09=motor fuel tax,
+       24=insurance taxes and fees, 35 = all other tax refunds.",
+       y = "Millions of $", x = element_blank()) + 
+    scale_x_continuous(expand = c(0,0), limits = c(1998, current_year+.5), breaks = c(1998, 2005, 2010, 2015, 2020, current_year))
 
 
 ```
@@ -272,14 +331,15 @@ tax_refund %>%
 
 Abatements were a specific policy choice to do and different than normal refunds. Therefore, abatements were included in the fiscal gap calculation. This is not even a concern during most years. Only was an issue in 2023 when $1 billion abatement expenditure occured (as of writing). 
 
-> includes more than just abatements!!!     FIX
 
 
 ```{r}
 # manually adds the abatements as expenditure item and keeps on expenditure side.
-# otherwise ignored since it is in fund 0278 and 
+# otherwise ignored since it is in fund 0278, which is coded as in_ff=0
+# all other income tax refunds are excluded from fiscal gap calculations
+
 exp_temp <- exp_temp %>%
-  mutate(in_ff = ifelse(object == 9900, 1, in_ff))
+  mutate(in_ff = ifelse(object == 9900 & fund == "0278", 1, in_ff))
 ```
 
 
@@ -395,7 +455,7 @@ exp_temp <- anti_join(exp_temp, transfers_drop)
 
 ### State employee healthcare costs
 
-> Commented out line of code that seperates healthcare costs. This should keep healthcare costs in the agency, similar to the change that was made for pensions.
+> Re-commented this out: ~~Commented out line of code that seperates healthcare costs. This should keep healthcare costs in the agency, similar to the change that was made for pensions~~.
 
     agency=="507"|  agency=="442" | agency=="445" | agency=="452" |agency=="458" | agency=="497" ~ "948", # other departments
 
@@ -410,6 +470,8 @@ It looks like healthcare costs shift to "Other Departments" which includes :
 - Veteran's Affairs (497)    
 
 ```{r}
+#| include: false
+
 exp_temp |> filter(org_name == "BUREAU OF BENEFITS") |> 
   group_by(fy, agency) |>
   summarize(expenditure = sum(expenditure) ) |>
@@ -1305,8 +1367,8 @@ annotation <- data.frame(
 
 
 annotation_nums <- data.frame(
-  x = c(2022, 2022, 2023),
-  y = c(91, 120, -5),  
+  x = c(2025, 2025, 2025),
+  y = c(91, 123, -5),  
   label = c(
    year_totals$Expenditures[year_totals$Year==current_year]/1000,
   year_totals$Revenue[year_totals$Year==current_year]/1000, 
@@ -1331,25 +1393,26 @@ fiscal_gap <-
 
   geom_text(data = annotation, aes(x=x, y=y, label=label,
   parse = TRUE))+
-  # labels
-    theme_classic() +
+
     theme(legend.position = "bottom", legend.title = element_blank())+
     scale_linetype_manual(values = c("dashed", "dashed")) +
   scale_x_continuous(expand = c(0,0),
                                           limits = c(1998, current_year+.5)
 ) +
-
-#  scale_y_continuous(labels = comma)+
   xlab("Year") + 
   ylab("Billions of Dollars")  +
   ggtitle(paste0("Illinois Expenditures and Revenue Totals, 1998-",current_year))
 
 fiscal_gap
 
-# annotation_billions <- data.frame(
-#   x = c(2004, 2017, 2019),
-#   y = c(60, 50, 5),  
-#   label = c("Expenditures","Revenue", "Fiscal Gap"))
+
+
+## Adjust x and y coordinates to move placement of text
+annotation <- data.frame(
+  x = c(2024, 2024, 2024),
+  y = c(101, 130, 10),  
+  label = c("Expenditures","Revenue", "Fiscal Gap")
+)
 
 
 fiscal_gap2 <- ggplot(data = year_totals, aes(x=Year, y = Revenue/1000)) +
@@ -1362,15 +1425,17 @@ fiscal_gap2 <- ggplot(data = year_totals, aes(x=Year, y = Revenue/1000)) +
   geom_text(data = annotation_nums, aes(x = x, y = y, label = scales::dollar(label, accuracy = 0.01L)), size = 3) +  ## Number locations and text
   theme_classic() +
   theme(legend.position = "bottom", legend.title = element_blank()) +
-  scale_color_manual(values = c("Revenue" = "black", "Expenditures" = "red")) + 
+  scale_color_manual(values = c("Revenue" = "black", "Expenditures" = "red")) +
+    scale_linetype_manual(values = c("Revenue" = "solid", "Expenditures" = "dotted")) + 
+
   geom_hline(yintercept = 0) +
 
   scale_y_continuous(#labels = comma, 
-                     limits = c(-12, 120), 
+                     limits = c(-12, 130), 
                      breaks = c(-10, 20, 40, 60, 80, 100, 120), 
                      minor_breaks = c(-10, 0, 10, 30, 50, 70, 90, 110))+
   scale_x_continuous(expand = c(0,0), 
-                     limits = c(1998, current_year+.5)
+                     limits = c(1998, current_year+1)
                      ) +
  # scale_color_manual(values = c("red" = "Expenditures", "black" = "Revenue")) + 
 
