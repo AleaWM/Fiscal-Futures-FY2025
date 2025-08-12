@@ -1700,15 +1700,47 @@ ownsource_graph
 
 #### Medicaid Reimbursements and Expenditures
 
+Healthcare provider taxes come from revenue source 0133.
+
+2104 = Medicare Part D
+
 ```{r}
-medicaid_cost <- exp_temp %>% filter(agency=="478" & (appr_org=="01" | appr_org == "65" | appr_org=="88") & (object=="4900" | object=="4400")) %>% group_by(fy) %>% summarize(sum=sum(expenditure))
-  
-med_reimburse <- rev_temp %>% filter(rev_type=="57" & agency=="478" & (source=="0618"|source=="2364"|source=="0660"|source=="1552"| source=="2306"| source=="2076"|source=="0676"|source=="0692")) %>% group_by(fy) %>% summarize(sum=sum(receipts))
+provider_taxes <- rev_temp %>% 
+  filter(source == "0133" ) |>
+  group_by(fy) %>% 
+  summarize(receipts=sum(receipts)) 
+
+rev_temp |>
+  filter(source == "0133" ) |>
+  group_by(fy, fund_name_ab) %>% 
+  summarize(receipts=sum(receipts)) |> 
+  ggplot() + 
+  geom_col(aes(x=fy, y = receipts, fill = fund_name_ab)) + scale_y_billions() + labs(x = element_blank(),
+                                                                                     title = "Funds that received Provider Taxes")
+
+
+
+medicaid_cost <- exp_temp %>% 
+  filter(agency=="478" & 
+           #(appr_org=="01" | appr_org == "65" | appr_org=="88") &
+           (object=="4900" | object=="4400")) %>% group_by(fy) %>% 
+  summarize(sum=sum(expenditure, na.rm=TRUE))
+
+
+med_reimburse <- rev_temp %>% 
+  filter(rev_type == "58") |>
+   # rev_type=="57" & agency=="478" & 
+         #  (source=="0618"|source=="2364"|
+           #   source=="0660"|source=="1552"| source=="2306"| source=="2076"|source=="0676"|source=="0692") ) %>% 
+  group_by(fy) %>% summarize(sum=sum(receipts, na.rm=TRUE))
+
 
 ggplot()+
   geom_line(data=medicaid_cost, aes(x=fy, y=sum), color = "red") + 
   geom_line(data=med_reimburse, aes(x=fy, y = sum), color="black") +
-  theme_classic() + labs(title = "Medicaid reimbursements and Medicaid expenditures", caption = "Medicaid expenditures include funds provided to medical providers. ")
+  geom_line(data = provider_taxes, aes(x=fy, y = receipts), color = "gray") +
+ labs(title = "Medicaid reimbursements and Medicaid expenditures", caption = "Medicaid expenditures include funds provided to medical providers. ") +
+  scale_y_billions(name = "Dollars")
 ```
 
 # Change from Previous Year
