@@ -1,17 +1,4 @@
----
-format:
-  html:
-    theme: zephyr
-    toc: true
-    code-fold: true
-    code-tools: true
-    code-overflow: wrap
-    code-copy: true
-    fig-cap-location: top
-    tbl-cap-location: top
-    df-print: paged
----
-# FY2025 Report Images and Tables
+## FY2025 Report Images and Tables
 
 
 
