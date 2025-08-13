@@ -11,16 +11,10 @@ format:
     tbl-cap-location: top
     df-print: paged
 ---
-# FY2025 Report Images and Tables{#sec-all-code-pensionchange}
+# FY2025 Report Images and Tables
 
 
-**An Explanation of a Methodological Change in How We Categorize Some Pension Spending**
 
-In previous reports, a expenditure category was created to represent all Pension spending. It was created by removing pension expenditures out of the agencies that that had the expenses in order to highlight the amount that was spent on pensions.
-
-As of the FY2024 report, pension expenditures will remain in the agency that has the pension expenses to better represent the total cost of providing a service to the public.
-
-However, we thought that readers also might be interested in total pension spending during current and past years. We have added a separate table showing this information but emphasize that pension spending is already incorporated in other spending categories and should not be added to the total shown in Table 1 of the report.
 
 
 ```{r setup, warning=FALSE, message=FALSE}
@@ -345,6 +339,17 @@ exp_temp <- exp_temp %>%
 
 
 ### Pension Expenditures
+
+
+**An Explanation of a Methodological Change in How We Categorize Some Pension Spending**
+
+In previous reports, a expenditure category was created to represent all Pension spending. It was created by removing pension expenditures out of the agencies that that had the expenses in order to highlight the amount that was spent on pensions.
+
+As of the FY2024 report, pension expenditures will remain in the agency that has the pension expenses to better represent the total cost of providing a service to the public.
+
+However, we thought that readers also might be interested in total pension spending during current and past years. We have added a separate table showing this information but emphasize that pension spending is already incorporated in other spending categories and should not be added to the total shown in Table 1 of the report.
+
+
 
 New POB bond in 2019: Accelerated Bond Fund paid benefits in advance as lump sum   
 
@@ -1193,6 +1198,43 @@ aggregate_exp_labeled <- exp_temp %>%
 aggregate_exp_labeled %>% mutate_all(., ~round(., digits = 0))
 ```
 
+# All Funds vs General Funds
+
+```{r}
+rev_fund_cats <- rev_temp |> filter(in_ff == 1) |> group_by(fy, fund_cat_name) |> summarize(Revenue = sum(receipts, na.rm=TRUE))
+rev_fund_cats
+
+exp_fund_cats <- exp_temp |> filter(in_ff == 1) |> group_by(fy, fund_cat_name) |> summarize(Expenditures = sum(expenditure, na.rm=TRUE))
+exp_fund_cats
+
+
+ggplot() +
+  geom_line(data = rev_fund_cats, aes(x=fy, y = Revenue, color = fund_cat_name)) + 
+    geom_line(data = exp_fund_cats, aes(x=fy, y = Expenditures, color = fund_cat_name), lty=2)  + 
+  scale_y_billions(name = "$")
+
+```
+
+
+
+```{r}
+rev_fund_cats <- rev_temp |> filter(in_ff == 1 & fund_cat_name == "General Funds") |> group_by(fy, fund_cat_name) |> summarize(Revenue = sum(receipts, na.rm=TRUE))
+rev_fund_cats
+
+exp_fund_cats <- exp_temp |> filter(in_ff == 1 & fund_cat_name == "General Funds") |> group_by(fy, fund_cat_name) |> summarize(Expenditures = sum(expenditure, na.rm=TRUE))
+exp_fund_cats
+
+
+ggplot() +
+  geom_line(data = rev_fund_cats, aes(x=fy, y = Revenue)) + 
+    geom_line(data = exp_fund_cats, aes(x=fy, y = Expenditures), lty=2)  + 
+  scale_y_billions(name = "$") +
+  labs(caption = "Dashed line is General Fund Expenditures",
+       title = "General Fund Fiscal Gap",
+       subtitle = "Pretend there is a line showing there is a difference between the two lines.")
+
+```
+
 # Graphs and Tables {#sec-graphs-and-tables}
 
 Create total revenues and total expenditures only:
@@ -1700,23 +1742,53 @@ ownsource_graph
 
 #### Medicaid Reimbursements and Expenditures
 
+Key funds: Healthcare Provider Relieve (0793) and Hospiotal Provider (0346)
+0365 is Health and Human Services Medicaid TR ? 
+0740 is Medicaid Buy in Program
+
 Healthcare provider taxes come from revenue source 0133.
 
 2104 = Medicare Part D
+2683 = MCO Provider Assessment --> Mostly goes to Healthcare Provider Relief Fund 0793 in HFS
+2526 = Hospital Provider Fund (not used in fy2025)
+
+0133 = Health Care Provider Tax --> Mostly goes to Hospital Provider Fund 0346
+0137 = Health Care Prov-Hospital (not used in  fy2025)
+0145 = IHFA Medicaid Provider (not used in fy2025)
+
+
+**Illinois also received:**   
+
+- over 500 million for TANF grant (source = 1393).
+
+- Also receives food stamp funds, over 500 million for "Medical Administration" source 0675. This mostly goes to the General Revenue Fund.  
+
+- around \$1.3 billion for "Medical Assistance" (source 0692, which goes to Drug Rebate Fund 0728)
+
+- an additional $3.3 billion in medical assistance from source 0676 which mostly goes to the General Revenue fund (0001) and a little goes to Tobacco settlement recovery fund
+
 
 ```{r}
 provider_taxes <- rev_temp %>% 
-  filter(source == "0133" ) |>
-  group_by(fy) %>% 
+  filter(source == "0133" | source == "2683" ) |>
+  group_by(fy, source) %>% 
   summarize(receipts=sum(receipts)) 
 
+ggplot()+
+  geom_line(data = provider_taxes, aes(x=fy, y = receipts, color = source)) +
+ labs(title = "Provider Taxes", caption = "Revenue Sources 0133 and 2683.") +
+  scale_y_billions(name = "Dollars")
+
+
 rev_temp |>
-  filter(source == "0133" ) |>
+  filter(source == "0133" | source == "2683") |>
   group_by(fy, fund_name_ab) %>% 
   summarize(receipts=sum(receipts)) |> 
   ggplot() + 
-  geom_col(aes(x=fy, y = receipts, fill = fund_name_ab)) + scale_y_billions() + labs(x = element_blank(),
-                                                                                     title = "Funds that received Provider Taxes")
+  geom_col(aes(x=fy, y = receipts, fill = fund_name_ab)) + 
+  scale_y_billions() + 
+  labs(x = element_blank(),
+       title = "Funds that received Provider Taxes")
 
 
 
