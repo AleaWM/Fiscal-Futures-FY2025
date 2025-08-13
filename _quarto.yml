@@ -1,0 +1,28 @@
+project:
+  type: book
+  output-dir: docs
+
+book:
+  title: "FY2025 Fiscal Futures Annual Report"
+  subtitle: "Part of IGPA's Fiscal Futures Project"
+  author: "Alea Wilbur-Mujtaba"
+  date: last-modified
+  search: true
+  repo-url: https://github.com/AleaWM/Fiscal-Futures-FY2025/
+  chapters:
+    - index.qmd
+    - Everything_changepensions.qmd
+     
+
+format:
+  html:
+    theme: zephyr
+    toc: true
+    code-fold: true
+    code-tools: true
+    code-overflow: wrap
+    code-copy: true
+    fig-cap-location: top
+    tbl-cap-location: top
+    df-print: paged
+ 
