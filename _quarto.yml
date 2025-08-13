@@ -16,7 +16,6 @@ book:
 
 format:
   html:
-    theme: zephyr
     toc: true
     code-fold: true
     code-tools: true
