@@ -1624,10 +1624,51 @@ rev_long %>%
 ```
 
 
+
+
 ### Top 3 Revenues {#sec-top-3-revenues}
 
 ```{r}
-#| label: fig-top3-revenues
+#| label: fig-figure1-top3-revenues
+#| fig-cap: Top 3 Revenue Sources (Own-Source Revenues only)
+#| fig-cap-location: top
+
+annotation <- data.frame(
+  x = c(2013, 2018, 2013),
+  y = c(16, 10, 5),  
+  label = c("Individual Income Tax", "Federal Medicaid", "Sales Tax"# , "Corporate Income Tax",
+            )
+)
+
+top3 <- rev_long  %>% 
+  filter(Category == "02" | Category == "58" |# Category == "03" | 
+           Category == "06") |>
+  mutate(Category_name = factor(Category_name, levels = c("Individual Income Taxes", "Federal Medicaid", "Sales Taxes")))
+
+top3 <- ggplot(data = top3, aes(x=Year, y=Dollars/1000))+
+  geom_recessions(text = FALSE, update = recessions)+
+
+  geom_line(aes(x=Year, y=Dollars/1000, color = Category_name, lty = Category_name), show.legend = NA, lwd = .7) + 
+  #geom_text(data = annotation, aes(x=x, y=y, label=label)) +
+
+  theme_classic() +
+  scale_x_continuous(expand = c(0,0),
+                     limits = c(1998, current_year+.5)
+  ) +
+  scale_y_continuous(labels = comma) +
+  scale_linetype_manual(values = c("dotted", "dashed", "dotdash")) +
+  theme(legend.position = "right") +
+  labs( 
+       y = "Billions of Nominal Dollars",
+       color = NULL, lty = NULL) 
+
+top3  +     geom_line(data = year_totals, aes(x=Year, y = Revenue/1000), lwd = 1)
+
+
+```
+
+```{r}
+#| label: fig-top3-ownsourcerevenues
 #| fig-cap: Top 3 Revenue Sources (Own-Source Revenues only)
 #| fig-cap-location: top
 
@@ -1642,8 +1683,10 @@ top3 <- rev_long  %>%
 
 top3 <- ggplot(data = top3, aes(x=Year, y=Dollars/1000))+
   geom_recessions(text = FALSE, update = recessions)+
-  geom_line(aes(x=Year, y=Dollars/1000, color = Category_name)) + 
-  geom_text(data = annotation, aes(x=x, y=y, label=label)) +
+
+  geom_line(aes(x=Year, y=Dollars/1000, group = Category_name, color = Category_name), position = "stack") + 
+ # geom_text(data = annotation, aes(x=x, y=y, label=label)) +
+
   theme_classic() +
   scale_x_continuous(expand = c(0,0),
                      limits = c(1998, current_year+.5)
@@ -1655,10 +1698,11 @@ top3 <- ggplot(data = top3, aes(x=Year, y=Dollars/1000))+
        subtitle = "Individual Income Taxes, Sales Tax, and Corporate income taxes",
        y = "Billions of Nominal Dollars") 
 
-top3
+
+top3  +     geom_line(data = year_totals, aes(x=Year, y = Revenue/1000))
+
 
 ```
-
 
 
 ### Own Source and Fed Transfers {#sec-own-source-and-fed-transfers}
@@ -2231,12 +2275,15 @@ The 10 largest revenue sources and 15 largest expenditure sources remain separat
 
 n_categories <- 10+1 # (Top 10 and then Total )
 
-rev_majorcats <- rev_long |> 
-  filter(Year == current_year | Year == first_year
-         ) |>
-  group_by(Year) |>
-  arrange(desc(Year), desc(Dollars)) |>
+categories <-  rev_long |> 
+  filter(Year == current_year ) |>
+  arrange(desc(Dollars)) |>
   slice(1:n_categories)
+
+rev_majorcats <- rev_long |> 
+  filter(
+    (Year == current_year | Year == first_year)
+          & Category_name %in% categories$Category_name) 
 
 rev_long_majorcats <- rev_long |>
   mutate(Category_name = ifelse(Category_name %in% rev_majorcats$Category_name, Category_name, "All Other Sources"),
@@ -2329,13 +2376,17 @@ revenue_change_majorcats%>%
 
 n_categories <- 9 + 1 # (Top 9 and then Total )
 
-exp_majorcats <- exp_long |> 
-  filter(Year == current_year | Year == first_year
-         ) |>
-    group_by(Year) |>
+# keep top 10 largest categories or categories larger than 2 billion for final table in report (not a set rule, changes each year depending what the focus of the report is or what is highlighted.)
 
-  arrange(desc(Year), desc(Dollars)) |>
-  slice(1:n_categories) # keep top 10 largest categories or categories larger than 2 billion for final table in report (not a set rule, changes each year depending what the focus of the report is or what is highlighted.)
+categories <-  exp_long |> 
+  filter(Year == current_year ) |>
+  arrange(desc(Dollars)) |>
+  slice(1:n_categories)
+
+exp_majorcats <- exp_long |> 
+  filter(
+    (Year == current_year | Year == first_year)
+          & Category_name %in% categories$Category_name) 
 
 
 exp_long_majorcats <- exp_long |>
