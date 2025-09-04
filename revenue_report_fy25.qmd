@@ -2234,7 +2234,8 @@ n_categories <- 10+1 # (Top 10 and then Total )
 rev_majorcats <- rev_long |> 
   filter(Year == current_year | Year == first_year
          ) |>
-  arrange(desc(Dollars)) |>
+  group_by(Year) |>
+  arrange(desc(Year), desc(Dollars)) |>
   slice(1:n_categories)
 
 rev_long_majorcats <- rev_long |>
@@ -2331,7 +2332,9 @@ n_categories <- 9 + 1 # (Top 9 and then Total )
 exp_majorcats <- exp_long |> 
   filter(Year == current_year | Year == first_year
          ) |>
-  arrange(desc(Dollars)) |>
+    group_by(Year) |>
+
+  arrange(desc(Year), desc(Dollars)) |>
   slice(1:n_categories) # keep top 10 largest categories or categories larger than 2 billion for final table in report (not a set rule, changes each year depending what the focus of the report is or what is highlighted.)
 
 
