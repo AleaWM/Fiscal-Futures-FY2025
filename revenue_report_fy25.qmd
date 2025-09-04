@@ -1,17 +1,3 @@
----
-title: FY2025 Report Images and Tables
-format:
-  html:
-    theme: zephyr
-    toc: true
-    code-fold: true
-    code-tools: true
-    code-overflow: wrap
-    code-copy: true
-    fig-cap-location: top
-    tbl-cap-location: top
-    df-print: paged
----
 
 ```{r setup, warning=FALSE, message=FALSE}
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
@@ -63,7 +49,9 @@ scale_y_billions <- function(..., digits = 1) {
 move_to_last <- function(df, n) df[c(setdiff(seq_len(nrow(df)), n), n), ]
 
 
-current_year <- 2025 # fiscal year, not calendar year
+current_year <- 2025 
+
+# fiscal year, not calendar year
 past_year=current_year-1
 
 rev_temp <- read_csv(paste0("../../Fiscal Futures IGPA/Fiscal-Future-Topics/data/FY", current_year, " Files/rev_temp.csv"))
@@ -71,6 +59,11 @@ rev_temp <- read_csv(paste0("../../Fiscal Futures IGPA/Fiscal-Future-Topics/data
 exp_temp <- read_csv(paste0("../../Fiscal Futures IGPA/Fiscal-Future-Topics/data/FY", current_year, " Files/exp_temp.csv"))
 ```
 
+```{r}
+# rev_temp <- read_csv(paste0("data/FY", current_year, " Files/rev_temp.csv"))
+# 
+# exp_temp <- read_csv(paste0("data/FY", current_year, " Files/exp_temp.csv"))
+```
 
 
 ```{r include=FALSE}
