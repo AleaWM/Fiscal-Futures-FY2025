@@ -1,3 +1,19 @@
+---
+title: FY2025 Revenue Report
+format:
+  html:
+    theme: zephyr
+    toc: true
+    toc-location: left
+    code-fold: true
+    code-tools: true
+    code-overflow: wrap
+    code-copy: true
+    fig-cap-location: top
+    tbl-cap-location: top
+    df-print: paged
+---
+
 
 ```{r setup, warning=FALSE, message=FALSE}
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
