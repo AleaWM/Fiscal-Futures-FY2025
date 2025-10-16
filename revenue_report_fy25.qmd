@@ -79,22 +79,6 @@ exp_temp <- read_csv(paste0("../../Fiscal Futures IGPA/Fiscal-Future-Topics/data
 
 ```
 
-# Report Tables and Figures
-
-![](generated/FIGURE1.png){width=100%}
-
-
-
-```{r}
-#| echo: false
-#| results: asis
-
-
-cat(readr::read_file("generated/TABLE1.html"))
-
-```
-
-
 ```{r}
 #| include: false
 
@@ -161,7 +145,7 @@ recessions <- update_recessions()
 ```
 
 
-# Step by Step Methodology and Exploration
+# Step by Step Data Exploration and Table/Figure Building
 
 ## Modify Expenditure File
 
@@ -173,15 +157,10 @@ Aggregate expenditures: Save tax refunds as negative revenue. Code refunds to ma
 
 
 - 02 = income taxes, fund 0278  
-
 - 03 = corporate income taxes,  fund 0946, 0380   
-
 - 06 = sales tax  
-
 - 09 = motor fuel tax, fund 0436, 0012  
-
 - 24 = insurance taxes and fees  
-
 - 35 = all other tax refunds.  
 
 
@@ -195,11 +174,8 @@ Rental Purchase agreement Refund 0671
 What we want:   
 
 - To exclude refunds as expenditures from our expenditure totals.  
-
 - Exclude funds that hold refund funds from both revenue and expenditure sides  
-
 - Revenue neutral unless budget tricks are occurring  
-
 - still want to examine refunds over time to compare to past years calculations  
 
 
@@ -1472,7 +1448,6 @@ year_totals <- aggregated_totals_long |>
   rename(Expenditures = exp,
          Revenue = rev) |>  
   mutate(`Fiscal Gap` = Revenue - Expenditures)
-# |>  arrange(desc(Year))
 # creates variable for the Gap each year
 
 year_totals  |>  
@@ -1752,7 +1727,7 @@ Figure1 <- top3  +
 
 
 
-ggplot2::ggsave("generated/FIGURE1.png", Figure1, width = 11, height = 6, dpi = 300)
+#ggplot2::ggsave("generated/FIGURE1.png", Figure1, width = 11, height = 6, dpi = 300)
 Figure1
 
 ```
@@ -1802,161 +1777,125 @@ top3  + geom_line(data = year_totals, aes(x=Year, y = Revenue/1000))
 
 adjustments <- readxl::read_xlsx("../Fiscal-Future-Topics/inputs/raw_index_data.xlsx")
 
-salestax <- rev_long  |> 
-  filter(Category == "06")
+salestax <- rev_long  |>
+  filter(Category_name == "Sales Taxes") |>
+  rename(year = Year, dollars = Dollars)
 
+# salestax <- aggregated_totals_long |> 
+#   filter(Category_name == "Sales Taxes")
 
-salestax <- salestax |> left_join(adjustments, by = c("Year" = "year")) 
-# 
-# ylabels <- c(#"Billions of Dollars",
-#              #"Billions of Dollars",
-#              "Billions of Dollars"
-#              )
-# 
-# vars <-  c("CPIAUCSL"#, "ILNGSP"#, "WPSFD49406"
-#            )
-# 
-# titles <- c("Adjusted by Inflation (CPIAUCSL)")
-# 
-# for (i in seq_along(vars)) {
-#   
-#   var   <- vars[i]
-#   title <- titles[i]
-#   ylabel  <- ylabels[i]
-# 
-#     
-#     graph <- salestax |> 
-#       mutate(
-#         base2024 = .data[[var]] / .data[[var]][Year == 2024],
-#         base1998 = .data[[var]] / .data[[var]][Year == 1998]
-#       )  |>
-#       
-#       mutate(adj_dollars = Dollars/1000 / base2024) |>  
-#       group_by(Year, type) |>
-#     summarize(adj_dollars = sum(adj_dollars, na.rm = TRUE), .groups = "drop") |>
-#     ggplot() + 
-#       geom_recessions(text = FALSE, update = recessions)+
-# 
-#       geom_line(aes(x = Year, y = adj_dollars, group = type, color = type), lwd = 1) +
-#       theme_minimal() +
-#     scale_y_continuous(labels=scales::dollar)+
-#       scale_color_manual(values = c("Revenue" = "black", "Expenditures" = "red")) + 
-# 
-#       scale_x_continuous(
-#         expand = c(0,0), 
-#         limits = c(1998, 2024), 
-#         breaks = c(1998, 2005, 2010, 2015, 2020, current_year-1)
-#       ) + 
-#       labs(
-#         title = title,
-#         y = ylabel,
-#         x = NULL
-#       ) + 
-#       theme(legend.title = element_blank()) 
-#   
-#   print(graph)
-# }
+salestax <- salestax |> left_join(adjustments, by = "year")
 
 
 
 
-# 2) GROWTH & 2-1-2 MOVING AVERAGE ----------------
+# Nominal GROWTH 
 sales <- salestax %>% 
-rename(dollars = Dollars,
-year = Year) |>
-  mutate(
-    growth = dollars/lag(dollars) - 1
-  )
+  mutate(growth = (dollars/(lag(dollars)) )- 1  )
 
 library(zoo)
 library(patchwork)
 
-# Weighted 5-term centered smoother with weights 2-1-2 (prev2, prev1, curr, next1, next2 = 2,1,0,1,2)
-w212 <- c(2,1,0,1,2) / sum(c(2,1,0,1,2))
+# 5-year  MOVING AVERAGE 
 sales <- sales %>%
-  mutate(
-    ma212 = rollapply(growth, 5, function(x) sum(x * w212), fill = NA, align = "center")
-  )
+  mutate(ma_growth = rollmean(growth, 5, align="center", fill=NA))
 
-# 3) PLOTS ----------------------------------------
+#  Calculate averages and plot them  
 avg_nom <- mean(sales$growth, na.rm = TRUE)
-avg_ma  <- mean(sales$ma212,  na.rm = TRUE)
+avg_ma  <- mean(sales$ma_growth,  na.rm = TRUE)
 
-p_points <- ggplot(sales, aes(year, growth)) +
+
+p_points <- ggplot(sales, aes(x = year, y = growth)) +
+   geom_recessions(text = FALSE, update = recessions) +
+
   geom_point(size = 1.6) +
 geom_line() + 
- # geom_smooth(se = FALSE, method = "loess", span = 0.6, linewidth = 0.7) +
   geom_hline(yintercept = avg_nom, linetype = "dashed") +
-  scale_y_continuous(labels = percent) +
-  labs(title = "Nominal growth (YoY)", x = NULL, y = "Growth rate") +
+  scale_y_continuous(labels = percent,# limits = c(-.10, .10),                      
+                     breaks = c(-.05, 0, .05, .1)) +
+    scale_x_continuous(breaks = c(2000, 2005, 2010, 2015, 2020, 2025))+
+
+  labs(title = "Nominal", x = NULL, y = "Growth rate") +
   theme_minimal(base_size = 12)
 
-p_ma <- ggplot(sales, aes(year, ma212)) +
+
+
+p_ma <- ggplot(sales, aes(year, ma_growth)) +
+    geom_recessions(text = FALSE, update = recessions)+
+    geom_point(size = 1.6) +
+
   geom_line(linewidth = 0.9) +
+
   geom_hline(yintercept = avg_ma, linetype = "dashed") +
-  scale_y_continuous(labels = percent) +
-  labs(title = "Nominal growth — 5-term 2-1-2 moving average", x = NULL, y = "Smoothed growth") +
+  scale_y_continuous(labels = percent, limits = c(-.05, .10), 
+                     breaks = c(-.05, 0, .05, .1)) +
+  scale_x_continuous(breaks = c(2000, 2005, 2010, 2015, 2020, 2025))+
+  labs(title = "Nominal Moving Average", x = NULL, y = "Moving Average\nGrowth Rate") +
   theme_minimal(base_size = 12)
 
-p_sales <- p_points / p_ma +
-  plot_annotation(
-    title = "Illinois Sales Tax Growth (Nominal)",
-    subtitle = "Top: YoY with LOESS; Bottom: centered 5-term 2-1-2 weighted moving average.\nDashed lines are series averages.",
-    caption = "Source: Fiscal Futures Project"
-  )
 
-print(p_sales)
-
-
-
-```
-
-```{r}
-# Assume 'CPI' exists; deflate to base year
-base_year <- min(salestax$Year, na.rm = TRUE)
-base_idx  <- salestax %>% filter(Year == base_year) %>% 
+# Real Dollars Graphs
+base_year <- min(salestax$year, na.rm = TRUE)
+base_idx  <- salestax %>% filter(year == base_year) %>% 
 summarize(x = mean( CPIAUCSL, na.rm = TRUE)) %>% pull(x)
 
 sales <- salestax %>%
-rename(#dollars = Dollars,
-year = Year) |>  
 mutate(
-    real_dollars = Dollars * (base_idx / CPIAUCSL),
+    real_dollars = dollars * (base_idx / CPIAUCSL),
     r_growth     = real_dollars / lag(real_dollars) - 1,
-    ma212_real   = rollapply(r_growth, 5, function(x) sum(x * w212), fill = NA, align = "center")
+ma212_real =rollmean(r_growth, 5, align="center", fill=NA)
   )
 
 avg_real   <- mean(sales$r_growth, na.rm = TRUE)
 avg_ma_real<- mean(sales$ma212_real, na.rm = TRUE)
 
 p_real <- ggplot(sales, aes(year, r_growth)) +
+    geom_recessions(text = FALSE, update = recessions)+
+
   geom_point(size = 1.6) +
 geom_line() + 
 
  # geom_smooth(se = FALSE, method = "loess", span = 0.6, linewidth = 0.7) +
   geom_hline(yintercept = avg_real, linetype = "dashed") +
-  scale_y_continuous(labels = percent) +
-  labs(title = "Real growth (YoY)", x = NULL, y = "Growth rate") +
+  scale_y_continuous(labels = percent,
+                     breaks = c(-.05, 0, .05, .1)) +
+    scale_x_continuous(breaks = c(2000, 2005, 2010, 2015, 2020, 2025))+
+
+  labs(title = "Real", x = NULL, y = "Real Growth rate") +
   theme_minimal(base_size = 12)
 
 p_ma_real <- ggplot(sales, aes(year, ma212_real)) +
+    geom_recessions(text = FALSE, update = recessions)+
+    geom_point(size = 1.6) +
+
   geom_line(linewidth = 0.9) +
+
   geom_hline(yintercept = avg_ma_real, linetype = "dashed") +
-  scale_y_continuous(labels = percent) +
-  labs(title = "Real growth — 5-term 2-1-2 moving average", x = NULL, y = "Smoothed growth") +
+  scale_y_continuous(labels = percent, limits = c(-0.05, .1)) +
+    scale_x_continuous(breaks = c(2000, 2005, 2010, 2015, 2020, 2025))+
+
+  labs(title = "Real Moving Average", x = NULL, y = "Moving Average\nReal Growth Rate") +
   theme_minimal(base_size = 12)
+
+parts <- c(
+  paste("Nominal",         label_percent(accuracy = 0.1)(avg_nom)),
+  paste("Real",            if (!is.na(avg_real))    label_percent(accuracy = 0.1)(avg_real)    else NA),
+  paste("5-Year MA (Nom.)", label_percent(accuracy = 0.1)(avg_ma)),
+  paste("5-Year MA (Real)", if (!is.na(avg_ma_real)) label_percent(accuracy = 0.1)(avg_ma_real) else NA)
+)
+cap4 <- paste("Dashed lines = sample averages:", paste(na.omit(parts), collapse = "; "))
+
 
 p_sales4 <- (p_points | p_real) / (p_ma | p_ma_real) +
   plot_annotation(
     title = "Various Measures of Illinois Sales Tax Growth Rate",
-    subtitle = "Dashed lines show sample averages; LOESS approximates Stata’s connected overlay.",
-    caption = "Source: Fiscal Futures Project"
+    caption = cap4
   )
-print(p_ma_real)
+
 print(p_sales4)
 
-#ggsave("generated/Sales Tax/sales_tax_growth_4panel.png", p_sales4, width = 12, height = 8, dpi = 300)
-#ggsave("generated/Sales Tax/sales_tax_growth_4panel.svg", p_sales4, width = 12, height = 8)
+#ggsave("generated/figure2.png", p_sales4, width = 12, height = 8, dpi = 300)
+
 
 ```
 
@@ -2018,7 +1957,7 @@ ownsource_graph
 
 ### Medicaid Reimbursements and Expenditures
 
-Key funds: Healthcare Provider Relieve (0793) and Hospiotal Provider (0346)
+Key funds: Healthcare Provider Relieve (0793) and Hospital Provider (0346)
 0365 is Health and Human Services Medicaid TR ? 
 0740 is Medicaid Buy in Program
 
@@ -2087,11 +2026,104 @@ ggplot()+
   geom_line(data=medicaid_cost, aes(x=fy, y=sum), color = "red") + 
   geom_line(data=med_reimburse, aes(x=fy, y = sum), color="black") +
  # geom_line(data = provider_taxes, aes(x=fy, y = receipts), color = "gray") +
- labs(title = "Medicaid reimbursements and Medicaid expenditures", caption = "Medicaid expenditures include funds provided to medical providers.",
+ labs(title = "Medicaid reimbursements and Medicaid expenditures", 
+      caption = "Medicaid expenditures include funds provided to medical providers.",
       x = element_blank()) +
   scale_y_billions(name = "Dollars") + 
   scale_x_continuous(breaks = c(2000, 2005, 2010, 2015,2020,2025))
 ```
+
+
+### Provider Assessments, % of 1998 levels
+
+```{r}
+#| label: fig-FIGURE3
+
+
+provider_taxes <- rev_long |> filter(Category == "31")
+
+base_idx  <- provider_taxes %>% filter(Year == base_year)
+
+
+provider_taxes <- provider_taxes |>
+mutate(rev_indexed = (Dollars / Dollars[Year==1998]),
+Series = "Provider Taxes") |>
+select(Year, rev_indexed, Series)
+
+rev_index = year_totals |>
+mutate(rev_indexed = (Revenue / Revenue[Year==1998]),
+Series = "Total Revenue") |>
+select(Year, rev_indexed, Series)
+
+plotdata <- rbind(provider_taxes, rev_index)
+
+plot_indexed <- 
+ggplot(plotdata, aes(Year, rev_indexed, color = Series)) + 
+     geom_recessions(text = FALSE, update = recessions) +
+
+geom_line(lwd = 1) +
+ geom_point(data = plotdata |> group_by(Series) |> filter(Year == max(Year)),
+    aes(color = Series),
+    hjust = -0.1, vjust = 0.5, show.legend = FALSE ) + 
+    scale_color_manual(values = c("#2A5783",  "#99C5E3") )+
+
+  geom_text(data = plotdata |> group_by(Series) |> filter(Year == max(Year)),
+    aes(label = scales::percent(rev_indexed , accuracy = 1), color = Series),
+    hjust = -0.1, vjust = 0.5, show.legend = FALSE ) +
+scale_y_continuous(labels = scales::percent, limits = c(0,9), name = NULL) + 
+scale_x_continuous(limits = c(base_year-1, 2025 + 1), breaks = c(2000, 2005, 2010, 2015, 2020,2025), name = NULL) + 
+
+  labs(
+    title = "Medical Provider Assessments, as % of 1998 levels") +
+theme(base_size = 14,
+legend.position = "top")
+
+#ggsave(plot_indexed, file= "generated/figure3.png")
+plot_indexed
+
+```
+
+```{r}
+#| label: fig-medicaid-obbb-plot
+#| fig-width: 6
+#| fig-cap: "Projected State Revenue Losses from OBBB Caps on Provider Tax Rates (MCO & Hospital Assessments Only). Source: University of Illinois Fiscal Futures Project."
+#| fig-cap-location: margin
+
+#obbb_raw <- readxl::read_excel("../Fiscal-Future-Topics/data/FY2025 Files/Medicaid/obbb_v6.xlsx")
+obbb_raw <- readxl::read_excel("../Fiscal-Future-Topics/data/FY2025 Files/Medicaid/obbb_v9.xlsx")
+
+
+obbb_raw <- obbb_raw |> 
+  mutate(Scenario = case_when(
+    Scenario == "Baseline:  no growth in patient revenues" ~ "Baseline: no growth",
+       Scenario == "Modest growth in patient revenues" ~ "Modest Growth", 
+       Scenario == "Modest contraction in patient revenues" ~ "Modest Contraction"
+))
+
+obbb_tidy <- obbb_raw |>
+pivot_longer(`2025`: `2033`, names_to = "Year", values_to = "value")
+
+p_obbb <- ggplot(obbb_tidy, aes(x = Year, y = value, group=Scenario, color = Scenario)) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 2) +
+  geom_text(data = obbb_tidy |> group_by(Scenario) |> filter(Year == max(Year)),
+            aes(label = scales::dollar(value , accuracy = 1), color = Scenario),
+            hjust = -0.1, vjust = 0.5, show.legend = FALSE ) +
+  
+  scale_color_manual(values = c("#2A5783", "#6495BF", "#B9DDF1") )+
+  scale_y_continuous(labels = dollar, name ="Millions") +
+  scale_x_continuous(limits = c(2024, 2035), breaks = c(2025:2033), name = NULL) + 
+  
+  theme(legend.position = "bottom",
+        base_size = 12) #+ 
+# labs(title= "Projected State Revenue Losses from OBBB's Caps on Provier Tax Rates",
+#subtitle = "Based on MCO & Hospital Assessments Only")
+
+#ggsave(p_obbb, file= "generated/figure4.png")
+p_obbb
+
+```
+
 
 # Change from Previous Year
 
@@ -2115,7 +2147,7 @@ rev_long |>
     axis.ticks.y = element_blank(),
     axis.line.y.left  = element_blank()) +
   scale_x_continuous(
-    #imits = c(0, 35000), 
+    #limits = c(0, 35000), 
                      labels = comma)
 
 exp_long |>
@@ -2209,13 +2241,14 @@ revenue_wide2 <- rev_long |>
               values_from = Dollars) |>
   #  relocate("Other Revenue Sources **", .after = last_col()) |>
   relocate("Total", .after =  last_col())
+
 ```
 
 
 ```{r}
 
-exp_long <- pivot_longer(exp_totals, exp_402:exp_TOTALS , names_to = c("type", "Category"), values_to = "Dollars", names_sep = "_") |>
-
+exp_long <- pivot_longer(exp_totals, exp_402:exp_TOTALS , 
+                         names_to = c("type", "Category"), values_to = "Dollars", names_sep = "_") |>
   rename(Year = fy ) |> 
   mutate(Category_name = 
            case_when(
@@ -2265,8 +2298,6 @@ exp_long <- pivot_longer(exp_totals, exp_402:exp_TOTALS , names_to = c("type", "
             #  T ~ "All Other Expenditures **")
            )) |> 
     select(-type, -Category) |> 
-
-   # mutate(Category_name = ifelse(Dollars < 1, "Other Departments", Category_name)) |>
 
   group_by(Year, Category_name) |> 
   summarise(Dollars = round(sum(Dollars, na.rm=TRUE), digits=2)) |> 
@@ -2333,13 +2364,14 @@ cagr_calculations <- function(df){ # This works for one variable at a time
     # Combine all into one tibble
   result <- data.frame(cagr_max, cagr_10, cagr_5, cagr_3, cagr_2, cagr_1)
   return(result)
-  }
+}
+
 ```
 
 
 ```{r}
 #| label: tbl-good-exp-CAGR-withTotals
-#| tbl-cap: Expenditure Category CAGRs with Total CAGR (Ordered Alphabetically)
+#| tbl-cap: "Expenditure Category CAGRs with Total CAGR (Ordered Alphabetically)"
 #| tbl-cap-location: top
 
 
@@ -2359,11 +2391,12 @@ CAGR_expenditures_summary_tot |>
   kbl(caption = "CAGR Calculations for All Expenditure Categories" , row.names=FALSE) |> 
   kable_classic() |>
   row_spec(lastrow, bold = T, color = "black", background = "gray")
+
 ```
 
 ```{r}
 #| label: tbl-RevCAGRs-allcats
-#| tbl-cap: Revenue Category CAGRs with Total CAGR (Ordered Alphabetically)
+#| tbl-cap: "Revenue Category CAGRs with Total CAGR (Ordered Alphabetically)"
 #| tbl-cap-location: top
 
 CAGR_revenue_summary_tot <- cagr_calculations(rev_long) |>   
@@ -2425,12 +2458,18 @@ revenue_change2 <- move_to_last(revenue_change2, totalrow) # Move "Total" to las
 
 lastrow = nrow(revenue_change2)
 
-revenue_change2 |>   
+Table2 <- revenue_change2 |>   
   filter(!is.na(`Revenue Category`)) |>
 
-  kbl(caption = "Table 1. Yearly Change in Revenue", row.names = FALSE) |> 
+  kbl(caption = "Table 1. Yearly Change in Revenue (All Sources)", row.names = FALSE) |> 
    kable_classic() |>
     row_spec(lastrow, bold = T, color = "black", background = "gray")
+
+
+
+#save_kable(Table2, file = "generated/App1_AllRevenueSources.html", self_contained = TRUE)
+
+Table2
 ```
 
 
@@ -2588,7 +2627,7 @@ Table1 <- revenue_change_majorcats|>
 #| tbl-cap: "Top 10 Revenue Sources with CAGRs"
 
 
-save_kable(Table1, file = "generated/TABLE1.html", self_contained = TRUE)
+#save_kable(Table1, file = "generated/TABLE1.html", self_contained = TRUE)
 
 Table1
 
