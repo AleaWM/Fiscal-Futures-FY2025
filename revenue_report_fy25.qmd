@@ -75,7 +75,7 @@ past_year=current_year-1
 
 rev_temp <- read_csv(paste0("../../Fiscal Futures IGPA/Fiscal-Future-Topics/data/FY", current_year, " Files/rev_temp.csv"))
 
-exp_temp <- read_csv(paste0("../../Fiscal Futures IGPA/Fiscal-Future-Topics/data/FY", current_year, " Files/exp_temp.csv"))
+exp_temp <- read_csv(paste0("../../Fiscal Futures IGPA/Fiscal-Future-Topics/data/FY", current_year, " Files/exp_temp.csv")) 
 
 ```
 
@@ -872,6 +872,22 @@ exp_temp <- exp_temp |>
              TRUE ~ "Check name"),
          year = fy)
 
+
+exp_temp <- exp_temp |>
+    mutate(fund_cat_name =
+           case_when(
+             fund_cat_name == "General Fund" ~ "General Funds",
+             fund_cat_name == "REVOLVING FUNDS" ~ "Revolving Funds",
+             T ~ fund_cat_name
+           ),
+         federal_funded = case_when(
+           fund_cat_name == "Federal Trust Funds" ~ "Federal Funds",
+           group_name == "MEDICAID" & fund_cat_name == "General Funds" ~ "Federal Funds",
+          T ~ "State Funds"
+           
+         ))
+
+
 exp_temp |> filter(group_name == "Check name")
 
 
@@ -897,7 +913,13 @@ rev_temp <- rev_temp |>
     (agency =="556" | agency == "538") ~ "406", # coded as agriculture
     agency == "560" ~ "592", # IL finance authority (fire trucks and agriculture stuff)to state fire marshal
     agency == "570" & fund == "0011" ~ "494",   # city of Chicago road fund to transportation
-    TRUE ~ (as.character(agency)))) 
+    TRUE ~ (as.character(agency)))) |>
+  mutate(fund_cat_name =
+           case_when(
+             fund_cat_name == "General Fund" ~ "General Funds",
+             fund_cat_name == "REVOLVING FUNDS" ~ "Revolving Funds",
+             T ~ fund_cat_name
+           ))
 ```
 
 #### Federal Transfers
@@ -942,25 +964,29 @@ rev_temp |> filter(source_name_AWM == "FEDERAL STIMULUS PACKAGE") |>
 
 ### Medicaid Revenue vs Medicaid Expenditures
 
+
+object 4900 is Lump Sums, object 4400 is Awards & Grants.
+
 ```{r}
 
-medicaid_cost <- exp_temp |> 
+medicaid_cost_total <- exp_temp |> 
   filter(agency=="478" & (appr_org=="01" | appr_org == "65" | appr_org=="88") & (object=="4900" | object=="4400")) |> 
   group_by(fy) |> 
-  summarize(sum=sum(expenditure))
+  summarize(sum=sum(expenditure, na.rm=TRUE))
 
-med_reimburse <- rev_temp |> 
-  filter(rev_type=="57" & agency=="478" & (source=="0618"|source=="2364"|source=="0660"|source=="1552"| source=="2306"| source=="2076"|source=="0676"|source=="0692")) |> 
-  group_by(fy) |> 
-  summarize(sum=sum(receipts))
-
-
+medicaid_cost <- exp_temp |> 
+  filter(#agency=="478" & 
+          # (appr_org=="01" | appr_org == "65" | appr_org=="88") & 
+           (object=="4900" | object=="4400")) |> 
+  group_by(fy, agency) |> 
+  summarize(sum=sum(expenditure, na.rm=TRUE))
 
 ggplot()+
-  geom_line(data=medicaid_cost, aes(x=fy, y=sum, color = "Expenditures")) + 
-  geom_line(data=med_reimburse, aes(x=fy, y = sum, color = "Reimbursements")) + 
+  geom_line(data=medicaid_cost_total, aes(x=fy, y = sum, color = "Expenditures"), lwd = 1) +
+    geom_line(data=medicaid_cost, aes(x=fy, y = sum, color = agency)) + 
+
   scale_x_continuous(n.breaks = 6) +
-  labs(title = "Medicaid reimbursements and Medicaid expenditures", 
+  labs(title = "Medicaid expenditures", 
        caption = "Medicaid expenditures include funds provided to medical providers.", 
        color = element_blank()
        )
@@ -1680,6 +1706,65 @@ rev_long |>
 
 
 
+**Expenditure and revenues when focusing on largest categories and combining others into "All Other Expenditures(Revenues)":**
+
+```{r}
+#| label: fig-bargraphs-largest-expend-byfundingsource
+#| fig-cap: "Largest Expenditures for FY2025"
+
+
+n_categories <- 10
+# keep top 10 largest category names for bar graph
+
+current_year <- 2025
+
+# list of top 10 expenditure categories
+categories <-  exp_long |> 
+  filter(Year == 2025 ) |>
+  arrange(desc(Dollars)) |>
+  slice(1:10)
+
+exp_temp |>
+  group_by(year, group, group_name, fund_cat_name) |>
+  summarize(sum_expenditure = sum(expenditure)/1000000) |>
+  arrange(year) |>
+  pivot_wider(names_from = "group_name", values_from = "sum_expenditure") |>
+  filter(fund_cat_name == "Federal Trust Funds")
+
+
+exp_temp |>
+  mutate(fund_cat_name =
+           case_when(
+             fund_cat_name == "General Fund" ~ "General Funds",
+             fund_cat_name == "REVOLVING FUNDS" ~ "Revolving Funds",
+             T ~ fund_cat_name
+           ),
+         federal_funded = case_when(
+           fund_cat_name == "Federal Trust Funds" ~ "Federal Funds",
+           group_name == "MEDICAID" & fund_cat_name == "General Funds" ~ "Federal Funds",
+          T ~ "State Funds"
+           
+         )) |>
+  group_by(year, group, group_name, federal_funded) |>
+  summarize(Dollars = sum(expenditure)/1000000) |>
+  #filter(fund_cat_name == "Federal Trust Funds")
+filter( year == current_year) |>
+ # mutate(rank = rank(Dollars),
+        mutate(Category_name = ifelse(group %in% categories$Category, group_name, 'All Other Expenditures')) |>
+ # select(-c(Year, Dollars, rank)) |>
+  arrange(desc(Dollars)) |>
+  ggplot() + 
+  geom_col(aes(x = Category_name, y = `Dollars`/1000, fill = federal_funded)) + 
+  coord_flip() +
+      theme_classic() +
+      labs(title = paste0("Expenditures for ", current_year))+    xlab("") +
+  ylab("Billions of Dollars")
+
+```
+
+
+
+
 ### Top 3 Revenues
 
 ```{r}
@@ -1708,14 +1793,36 @@ top3 <- ggplot(data = top3, aes(x=Year, y=Dollars/1000))+
                      limits = c(1998, current_year+.5)
   ) +
   scale_y_continuous(labels = comma) +
-  scale_linetype_manual(values = c("dotted", "dashed", "dotdash")) +
-  theme(legend.position = "right") +
+  theme(
+  legend.position = c(1, 0.5),
+  legend.justification = c(0.5, 0.5),
+  base_size = 16,
+    plot.margin = margin(5.5, 60, 5.5, 5.5)  # top, right, bottom, left
+
+) +
+  # theme(#legend.position = "inside",
+  #       #legend.location = "plot",
+  #   legend.position = "right",
+  #       legend.justification.right = c(1,.3),
+  #       #legend.justification.inside = c(1,.3),
+  #       base_size = 16) +
   labs( 
        y = "Billions of Nominal Dollars",
-       color = NULL, lty = NULL) 
+       color = NULL,
+       lty = NULL) 
 
 Figure1 <- top3  +
-  geom_line(data = year_totals, aes(x=Year, y = Revenue/1000), lwd = 1)
+  geom_line(data = year_totals, aes(x=Year, y = Revenue/1000, lty = "Total Revenue", color = "Total Revenue"), lwd = 1) +  
+  # scale_linetype_manual(values = c("dotted", "dashed", "dotdash", "solid")) +
+  scale_color_manual(
+  values = c(
+    "Individual Income Taxes" = "#1f77b4",
+    "Federal Medicaid"        = "#ff7f0e",
+    "Sales Taxes"             = "#2ca02c",
+    "Total Revenue"           = "black"   
+  )) +
+ scale_linetype_manual(values = c("dotted", "dashed", "dotdash", "solid"), 
+   labels = c( "Individual Income Taxes", "Federal Medicaid", "Sales Taxes", "Total Revenue" )) 
 
 
 ```
@@ -1727,8 +1834,9 @@ Figure1 <- top3  +
 
 
 
-#ggplot2::ggsave("generated/FIGURE1.png", Figure1, width = 11, height = 6, dpi = 300)
-Figure1
+#ggplot2::ggsave("generated/FIGURE1.png", Figure1)#, #width = 11, height = 6, dpi = 300               )
+Figure1 
+
 
 ```
 
@@ -1824,7 +1932,7 @@ p_ma <- ggplot(sales, aes(year, ma_growth)) +
     geom_recessions(text = FALSE, update = recessions)+
     geom_point(size = 1.6) +
 
-  geom_line(linewidth = 0.9) +
+  geom_line() +
 
   geom_hline(yintercept = avg_ma, linetype = "dashed") +
   scale_y_continuous(labels = percent, limits = c(-.05, .10), 
@@ -1868,7 +1976,7 @@ p_ma_real <- ggplot(sales, aes(year, ma212_real)) +
     geom_recessions(text = FALSE, update = recessions)+
     geom_point(size = 1.6) +
 
-  geom_line(linewidth = 0.9) +
+  geom_line() +
 
   geom_hline(yintercept = avg_ma_real, linetype = "dashed") +
   scale_y_continuous(labels = percent, limits = c(-0.05, .1)) +
@@ -1894,12 +2002,14 @@ p_sales4 <- (p_points | p_real) / (p_ma | p_ma_real) +
 
 print(p_sales4)
 
-#ggsave("generated/figure2.png", p_sales4, width = 12, height = 8, dpi = 300)
+#ggsave("generated/figure2.png", p_sales4#, width = 12, height = 8, dpi = 300)
 
 
 ```
 
 ### Own Source and Fed Transfers
+
+Federal revenue to all fund types is coded as 3 types of federal revenue: Medicaid, Transportation, and Other. 
 
 ```{r}
 #| label: tbl-ownsource-and-fed-revenue
@@ -1957,7 +2067,7 @@ ownsource_graph
 
 ### Medicaid Reimbursements and Expenditures
 
-Key funds: Healthcare Provider Relieve (0793) and Hospital Provider (0346)
+Key funds: Healthcare Provider Relief (0793) and Hospital Provider (0346)
 0365 is Health and Human Services Medicaid TR ? 
 0740 is Medicaid Buy in Program
 
@@ -1994,8 +2104,17 @@ ggplot()+
  labs(title = "Provider Taxes", caption = "Revenue Sources 0133 and 2683.") +
   scale_y_billions(name = "Dollars")
 
+rev_temp |>
+  filter(fy == 2025) |>
+  filter(source == "0133") |>
+  group_by(fy, fund_name_ab) |> 
+  summarize(receipts=sum(receipts))
+
+exp_temp |> filter(fund == "0346" & fy == 2025) |> summarize(spent = sum(expenditure))
+exp_temp |> filter(fund == "0346" & fy == 2025)
 
 rev_temp |>
+  # Healthcare Provider Taxes & MCO Provider assessment
   filter(source == "0133" | source == "2683") |>
   group_by(fy, fund_name_ab) |> 
   summarize(receipts=sum(receipts)) |> 
@@ -2030,7 +2149,7 @@ ggplot()+
       caption = "Medicaid expenditures include funds provided to medical providers.",
       x = element_blank()) +
   scale_y_billions(name = "Dollars") + 
-  scale_x_continuous(breaks = c(2000, 2005, 2010, 2015,2020,2025))
+  scale_x_continuous(breaks = c(2000, 2005, 2010, 2015, 2020, 2025))
 ```
 
 
@@ -2038,6 +2157,8 @@ ggplot()+
 
 ```{r}
 #| label: fig-FIGURE3
+##| fig-width: 6
+##| fig-height: 4
 
 
 provider_taxes <- rev_long |> filter(Category == "31")
@@ -2067,25 +2188,29 @@ geom_line(lwd = 1) +
     hjust = -0.1, vjust = 0.5, show.legend = FALSE ) + 
     scale_color_manual(values = c("#2A5783",  "#99C5E3") )+
 
-  geom_text(data = plotdata |> group_by(Series) |> filter(Year == max(Year)),
+  geom_label(data = plotdata |> group_by(Series) |> filter(Year == max(Year)),
     aes(label = scales::percent(rev_indexed , accuracy = 1), color = Series),
     hjust = -0.1, vjust = 0.5, show.legend = FALSE ) +
 scale_y_continuous(labels = scales::percent, limits = c(0,9), name = NULL) + 
-scale_x_continuous(limits = c(base_year-1, 2025 + 1), breaks = c(2000, 2005, 2010, 2015, 2020,2025), name = NULL) + 
+scale_x_continuous(limits = c(base_year, 2025 + 2), breaks = c(2000, 2005, 2010, 2015, 2020,2025), name = NULL) + 
 
-  labs(
-    title = "Medical Provider Assessments, as % of 1998 levels") +
-theme(base_size = 14,
-legend.position = "top")
+  #labs(
+   #title = "Medical Provider Assessments, as % of 1998 levels") +
+theme(base_size = 16,
+legend.position = "bottom")
 
 #ggsave(plot_indexed, file= "generated/figure3.png")
+
+#ggsave(plot_indexed, file= "generated/figure3_notitle.png")
+
 plot_indexed
 
 ```
 
 ```{r}
 #| label: fig-medicaid-obbb-plot
-#| fig-width: 6
+##| fig-width: 6
+##| fig-height: 4
 #| fig-cap: "Projected State Revenue Losses from OBBB Caps on Provider Tax Rates (MCO & Hospital Assessments Only). Source: University of Illinois Fiscal Futures Project."
 #| fig-cap-location: margin
 
@@ -2101,25 +2226,28 @@ obbb_raw <- obbb_raw |>
 ))
 
 obbb_tidy <- obbb_raw |>
-pivot_longer(`2025`: `2033`, names_to = "Year", values_to = "value")
+pivot_longer(`2025`: `2033`, names_to = "Year", values_to = "value") |> 
+  mutate(Year = as.numeric(Year))
 
 p_obbb <- ggplot(obbb_tidy, aes(x = Year, y = value, group=Scenario, color = Scenario)) +
   geom_line(linewidth = 1.2) +
   geom_point(size = 2) +
-  geom_text(data = obbb_tidy |> group_by(Scenario) |> filter(Year == max(Year)),
-            aes(label = scales::dollar(value , accuracy = 1), color = Scenario),
-            hjust = -0.1, vjust = 0.5, show.legend = FALSE ) +
+  geom_label(data = obbb_tidy |> group_by(Scenario) |> filter(Year == max(Year)),
+            aes(label = scales::dollar(value , accuracy = 1)),
+            hjust = -0.1, vjust = 0.5, show.legend = FALSE )+
   
   scale_color_manual(values = c("#2A5783", "#6495BF", "#B9DDF1") )+
   scale_y_continuous(labels = dollar, name ="Millions") +
-  scale_x_continuous(limits = c(2024, 2035), breaks = c(2025:2033), name = NULL) + 
+  scale_x_continuous(limits = c(2026, 2034), breaks = c(2026:2033), name = NULL) + 
   
   theme(legend.position = "bottom",
-        base_size = 12) #+ 
-# labs(title= "Projected State Revenue Losses from OBBB's Caps on Provier Tax Rates",
+        base_size = 16) #+ 
+# labs(title= "Projected State Revenue Losses\nfrom OBBB's Caps on Provider Tax Rates",
 #subtitle = "Based on MCO & Hospital Assessments Only")
 
 #ggsave(p_obbb, file= "generated/figure4.png")
+#ggsave(p_obbb, file= "generated/figure4_notitle.png")
+
 p_obbb
 
 ```
@@ -2128,6 +2256,8 @@ p_obbb
 # Change from Previous Year
 
 ```{r}
+#| fig-height: 6
+
 rev_long |>
   filter(Year == current_year | Year == past_year) |>
   mutate(Year = as.character(Year)) |>
@@ -2147,7 +2277,7 @@ rev_long |>
     axis.ticks.y = element_blank(),
     axis.line.y.left  = element_blank()) +
   scale_x_continuous(
-    #limits = c(0, 35000), 
+    limits = c(0, 40000), 
                      labels = comma)
 
 exp_long |>
@@ -2169,7 +2299,7 @@ exp_long |>
     axis.text.y = element_blank(),
     axis.ticks.y = element_blank(),
     axis.line.y.left  = element_blank())+
-  scale_x_continuous(#limits = c(0, 35000), 
+  scale_x_continuous(limits = c(0, 40000), 
                      labels = comma
                      )
 ```
@@ -2510,12 +2640,15 @@ expenditure_change2 <- move_to_last(expenditure_change2, totalrow) # Move "Total
 
 lastrow = nrow(expenditure_change2)
 
-expenditure_change2 |> 
+Table3<- expenditure_change2 |> 
   kbl(row.names = FALSE) |> 
   kable_classic() |>
     row_spec(lastrow, bold = T, color = "black", background = "gray")
 
-           
+  
+
+#save_kable(Table3, file = "generated/App2_AllExpenditureCategories.html", self_contained = TRUE)
+Table3         
 ```
 
 ## Summary Tables - Largest Categories
@@ -2730,3 +2863,41 @@ expenditure_change_majorcats |>
     row_spec(lastrow, bold = T, color = "black", background = "gray")
 
 ```
+
+Export summary file with totals:
+
+```{r exportexcelfile, warning = TRUE, message = TRUE}
+# Saves main items in one excel file named `summary_file.xlsx`. Delete `eval=FALSE` to run on local computer.
+
+#install.packages("openxlsx")
+library(openxlsx)
+
+#aggregated_totals_majorcats = rbind(rev_long, exp_long)
+
+todaysdate = Sys.Date()
+dataset_names <- list(#'Aggregate Revenues' = revenue_wide2, 
+                      #'Aggregate Expenditures' = expenditure_wide2, 
+
+
+                      
+                      'Table 1' = revenue_change_majorcats, #Top categories with yearly change, 23 yr cagr
+                      'Table 2' = expenditure_change_majorcats,
+                      
+                      'Appendix 1' = revenue_change2,
+                      'Appendix 2' = expenditure_change2,
+                      
+                      'CAGR Rev-MajorCats' = CAGR_revenue_majorcats_tot, # Categories Match Table 1 in paper
+                      'CAGR Exp-MajorCats' = CAGR_expenditures_majorcats_tot,  
+                                            
+                      'Fiscal Gap' = year_totals,    # Total Revenue, Expenditure, and Fiscal gap per year
+                      
+                      'aggregated_totals_long' = aggregated_totals_long#, # all data in long format. Good for creating pivot tables in Excel
+                      
+                   #   'aggregated_fewercategories' = aggregated_totals_majorcats # combines categories that have small amounts into "All Other" category
+                      )
+
+# no pension categories included as separate category (except for specific pension repayments that happened in some years.) 
+# pension costs are included with K-12 education, university education, etc
+write.xlsx(dataset_names, file = paste0("../Fiscal-Future-Topics/data/FY", current_year, " Files/summary_file_FY", current_year,"_", todaysdate, ".xlsx"))
+```
+
